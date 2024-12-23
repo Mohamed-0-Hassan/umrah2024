@@ -67,6 +67,26 @@ menu = st.sidebar.radio("Navigate", [
     "Donate"
 ])
 
+
+# Custom audio player function with repeat functionality
+def custom_audio_player(audio_file, repeat=False):
+    """
+    Display an audio player with repeat functionality.
+    """
+    audio_url = f"{audio_file}"  # Assuming audio_file is the file path or URL
+    repeat_js = """
+    <script>
+    const audioElement = document.querySelector('audio');
+    if (audioElement) {
+        audioElement.loop = %s;
+    }
+    </script>
+    """ % str(repeat).lower()
+
+    st.audio(audio_url)
+    st.markdown(repeat_js, unsafe_allow_html=True)
+
+
 if menu == "Travel to Mecca":
     st.header("Travel to Mecca")
     st.write("Store and organize your travel details.")
@@ -133,43 +153,79 @@ elif menu == "Masjid Al Haram":
 
 elif menu == "Tawaf":
     st.header("Tawaf")
-    st.write("Add specific duas for each round of Tawaf.")
+    st.write("Add specific Duas for each round of Tawaf.")
+
+    # Ensure 'tawaf_duas' exists and is properly initialized
+    if 'tawaf_duas' not in st.session_state['data']:
+        # Initialize for 7 rounds, each with an empty list of Duas
+        st.session_state['data']['tawaf_duas'] = [[] for _ in range(7)]
+    else:
+        # Validate existing structure
+        if not isinstance(st.session_state['data']['tawaf_duas'], list):
+            st.session_state['data']['tawaf_duas'] = [[] for _ in range(7)]
+        else:
+            # Ensure each round is a list
+            for i in range(len(st.session_state['data']['tawaf_duas'])):
+                if not isinstance(st.session_state['data']['tawaf_duas'][i], list):
+                    st.session_state['data']['tawaf_duas'][i] = []
 
     tawaf_duas = st.session_state['data']['tawaf_duas']
 
     st.write("### Duas for Tawaf Rounds:")
-    for i, dua in enumerate(tawaf_duas):
-        if dua:
+    for i, duas in enumerate(tawaf_duas):
+        if isinstance(duas, list):  # Ensure the round is a list
             st.write(f"#### Round {i + 1}")
-            st.write(f"Arabic: {dua.get('arabic', 'Not added yet')}")
-            st.write(f"English: {dua.get('english', 'Not added yet')}")
-            if dua.get('audio_url'):
-                st.write(f"[Download Arabic Audio]({dua['audio_url']})")
-            if 'audio_file' in dua and dua['audio_file']:
-                st.audio(dua['audio_file'])
+            for j, dua in enumerate(duas):
+                if isinstance(dua, dict):  # Ensure each Dua is a dictionary
+                    st.write(f"**Dua {j + 1}:**")
+                    st.write(f"Arabic: {dua.get('arabic', 'Not added yet')}")
+                    st.write(f"English: {dua.get('english', 'Not added yet')}")
+
+                    # Display audio player with repeat option
+                    repeat = st.checkbox(f"Repeat audio for Round {i + 1}, Dua {j + 1}",
+                                         key=f"repeat_round_{i}_dua_{j}")
+                    custom_audio_player(dua.get('audio_file'), repeat)
+                else:
+                    st.error(f"Invalid Dua format in Round {i + 1}. Expected a dictionary, got: {type(dua)}")
+        else:
+            st.error(f"Invalid data format for Round {i + 1}. Expected a list, got: {type(duas)}")
 
     if st.session_state['logged_in']:
         selected_round = st.selectbox("Select Round of Tawaf", range(1, 8))
-        dua_ar = st.text_input(f"Add or Update dua for Round {selected_round} (in Arabic):", value="", key=f"tawaf_ar_{selected_round}")
-        dua_en = st.text_area(f"Add or Update English translation for Round {selected_round}:", value="", key=f"tawaf_en_{selected_round}")
-        audio_url = st.text_input(f"Provide or Update a link to Arabic audio for Round {selected_round} (optional):", value="", key=f"tawaf_audio_{selected_round}")
-        uploaded_audio_file = st.file_uploader(f"Upload updated Arabic audio file for Round {selected_round} (optional):", type=["mp3"], key=f"tawaf_uploaded_audio_{selected_round}")
+        dua_ar = st.text_input(f"Add Arabic text for a new Dua for Round {selected_round}:", value="",
+                               key=f"tawaf_ar_{selected_round}")
+        dua_en = st.text_area(f"Add English translation for the new Dua for Round {selected_round}:", value="",
+                              key=f"tawaf_en_{selected_round}")
+        audio_url = st.text_input(
+            f"Provide a link to Arabic audio for the new Dua for Round {selected_round} (optional):", value="",
+            key=f"tawaf_audio_{selected_round}")
+        uploaded_audio_file = st.file_uploader(
+            f"Upload Arabic audio file for the new Dua for Round {selected_round} (optional):", type=["mp3"],
+            key=f"tawaf_uploaded_audio_{selected_round}")
 
-        if st.button(f"Save Dua for Round {selected_round}"):
+        if st.button(f"Add New Dua for Round {selected_round}"):
+            # Handle audio file upload
             audio_file_path = None
             if uploaded_audio_file:
-                audio_file_path = f"tawaf_round_{selected_round}.mp3"
+                audio_file_path = f"tawaf_round_{selected_round}_dua_{len(tawaf_duas[selected_round - 1]) + 1}.mp3"
                 with open(audio_file_path, "wb") as f:
                     f.write(uploaded_audio_file.getbuffer())
 
-            tawaf_duas[selected_round - 1] = {
+            # Create new Dua
+            new_dua = {
                 "arabic": dua_ar,
                 "english": dua_en,
                 "audio_url": audio_url,
                 "audio_file": audio_file_path
             }
-            save_data(st.session_state['data'])
-            st.success(f"Dua for Round {selected_round} updated successfully!")
+
+            # Append the new Dua to the selected round
+            if isinstance(tawaf_duas[selected_round - 1], list):
+                tawaf_duas[selected_round - 1].append(new_dua)
+                save_data(st.session_state['data'])
+                st.success(f"New Dua added for Round {selected_round}!")
+            else:
+                st.error(f"Invalid data structure for Round {selected_round}. Expected a list.")
 
 elif menu == "Pray 2 Rak’ahs at Maqam-e-Ibrahim":
     st.header("Pray 2 Rak’ahs at Maqam-e-Ibrahim")
